@@ -1,0 +1,10 @@
+# Intel Arc (A380 / A-series) - rename to nx2_switches.txt, or copy the lines you want into
+# %APPDATA%\eden\nx2_switches.txt. Restart the emulator after editing.
+
+# Task and mesh shader draws hang the GPU for seconds on Intel's Windows driver and draw white
+# triangles and white holes in Ocarina of Time's foliage. Skipping them keeps the picture clean
+# at the cost of some grass and leaves.
+EDEN_NX2_NO_MESH=1
+
+# The emulator's process yields less to background programs on CPUs with few threads.
+EDEN_NX2_HIGH_PRIORITY=1

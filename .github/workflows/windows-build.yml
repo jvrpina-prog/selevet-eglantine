@@ -1,0 +1,72 @@
+name: Windows build (Intel Arc)
+
+on:
+  push:
+    branches: [ main, 'arc/**' ]
+  workflow_dispatch:
+
+concurrency:
+  group: windows-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: windows-2022
+    timeout-minutes: 300
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+
+      - name: Tools (Ninja, glslang)
+        shell: pwsh
+        run: |
+          choco install ninja -y --no-progress
+          $g = "$env:RUNNER_TEMP\glslang"
+          Invoke-WebRequest https://github.com/KhronosGroup/glslang/releases/download/main-tot/glslang-master-windows-Release.zip -OutFile "$g.zip"
+          Expand-Archive "$g.zip" -DestinationPath $g
+          "$g\bin" | Out-File -Append -Encoding utf8 $env:GITHUB_PATH
+          "C:\Program Files\Git\usr\bin" | Out-File -Append -Encoding utf8 $env:GITHUB_PATH
+
+      - name: Cache CPM sources
+        uses: actions/cache@v4
+        with:
+          path: .cache/cpm
+          key: cpm-${{ runner.os }}-${{ hashFiles('cpmfile.json', '**/cpmfile.json') }}
+          restore-keys: cpm-${{ runner.os }}-
+
+      - name: Configure
+        shell: pwsh
+        run: >
+          cmake -S . -B build -G Ninja
+          -DCMAKE_BUILD_TYPE=Release
+          -DCMAKE_C_COMPILER=cl -DCMAKE_CXX_COMPILER=cl
+          "-DCMAKE_C_FLAGS=/arch:AVX2"
+          "-DCMAKE_CXX_FLAGS=/arch:AVX2 /EHsc"
+          -DYUZU_TESTS=OFF -DBUILD_TESTING=OFF
+          -DYUZU_CMD=OFF -DYUZU_ROOM=OFF -DYUZU_ROOM_STANDALONE=OFF
+          -DENABLE_UPDATE_CHECKER=OFF -DUSE_DISCORD_PRESENCE=OFF
+
+      - name: Build
+        shell: pwsh
+        run: cmake --build build --parallel 4
+
+      - name: Package
+        shell: pwsh
+        run: |
+          $out = "selevet-arc"
+          New-Item -ItemType Directory $out | Out-Null
+          Copy-Item build\bin\* $out -Recurse
+          Copy-Item dist\nx2_switches.txt $out\
+          if (Test-Path "dist\nx2_switches - Intel Arc.txt") { Copy-Item "dist\nx2_switches - Intel Arc.txt" $out\ }
+          Get-ChildItem $out -Recurse -Include *.pdb,*.ilk,*.exp,*.lib | Remove-Item -Force
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: selevet-arc-${{ github.sha }}
+          path: selevet-arc
+          retention-days: 14
