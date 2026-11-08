@@ -22,14 +22,15 @@ jobs:
         with:
           arch: x64
 
-      - name: Tools (Ninja, glslang)
+      - name: Tools (Ninja, Vulkan SDK)
         shell: pwsh
         run: |
           choco install ninja -y --no-progress
-          $g = "$env:RUNNER_TEMP\glslang"
-          Invoke-WebRequest https://github.com/KhronosGroup/glslang/releases/download/main-tot/glslang-master-windows-Release.zip -OutFile "$g.zip"
-          Expand-Archive "$g.zip" -DestinationPath $g
-          "$g\bin" | Out-File -Append -Encoding utf8 $env:GITHUB_PATH
+          $sdk = "$env:RUNNER_TEMP\vulkan-sdk.exe"
+          Invoke-WebRequest https://sdk.lunarg.com/sdk/download/latest/windows/vulkan-sdk.exe -OutFile $sdk
+          Start-Process -Wait -FilePath $sdk -ArgumentList "--root C:\VulkanSDK --accept-licenses --default-answer --confirm-command install"
+          "C:\VulkanSDK\Bin" | Out-File -Append -Encoding utf8 $env:GITHUB_PATH
+          "VULKAN_SDK=C:\VulkanSDK" | Out-File -Append -Encoding utf8 $env:GITHUB_ENV
           "C:\Program Files\Git\usr\bin" | Out-File -Append -Encoding utf8 $env:GITHUB_PATH
 
       - name: Cache CPM sources
