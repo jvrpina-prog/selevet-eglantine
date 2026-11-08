@@ -82,7 +82,7 @@ constexpr std::uint8_t KindSample = 1;
 constexpr std::uint8_t KindThread = 2;
 constexpr std::uint8_t KindModule = 3;
 constexpr std::uint8_t KindEnd = 0xff;
-constexpr size_t MaxThreads = 32;
+constexpr size_t MaxThreads = 64;
 constexpr size_t MaxDepth = 32;
 
 struct SampledThread {

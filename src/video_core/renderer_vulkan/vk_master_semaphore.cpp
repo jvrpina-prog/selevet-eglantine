@@ -4,6 +4,8 @@
 // SPDX-FileCopyrightText: Copyright 2020 yuzu Emulator Project
 // SPDX-License-Identifier: GPL-2.0-or-later
 
+#include <chrono>
+#include <cstdlib>
 #include <thread>
 
 #include <ranges>
@@ -15,6 +17,19 @@
 namespace Vulkan {
 
 constexpr u64 FENCE_RESERVE_SIZE = 8;
+
+namespace {
+// Intel's Windows driver busy-polls inside vkWaitSemaphores: the fencing thread spent 43% of a
+// core in win32u waiting for GPU ticks, on a 6-thread CPU whose cores the guest needs. Polling
+// the counter and sleeping between checks gives that time back. EDEN_NX2_GPU_WAIT_SLEEP_US=<us>
+// sets the interval on any driver; 0 keeps the driver's wait. Default 200 on Intel Windows.
+u32 GpuWaitSleepUs(const Device& device) {
+    if (const char* value = std::getenv("EDEN_NX2_GPU_WAIT_SLEEP_US")) {
+        return static_cast<u32>(std::strtoul(value, nullptr, 10));
+    }
+    return device.GetDriverID() == VK_DRIVER_ID_INTEL_PROPRIETARY_WINDOWS ? 200 : 0;
+}
+} // Anonymous namespace
 
 MasterSemaphore::MasterSemaphore(const Device& device_) : device(device_) {
     if (!device.HasTimelineSemaphore()) {
@@ -108,7 +123,14 @@ void MasterSemaphore::Wait(u64 tick) {
     // If none of the above is hit, fallback to a regular wait
     const auto start = std::chrono::steady_clock::now();
     try {
-        while (!semaphore.Wait(tick)) {
+        static const u32 sleep_us = GpuWaitSleepUs(device);
+        if (sleep_us != 0) {
+            while (semaphore.GetCounter() < tick) {
+                std::this_thread::sleep_for(std::chrono::microseconds{sleep_us});
+            }
+        } else {
+            while (!semaphore.Wait(tick)) {
+            }
         }
     } catch (const vk::Exception& exception) {
         // The throw ends the process; say why first (a device loss reached nothing else here).
