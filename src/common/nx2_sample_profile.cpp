@@ -111,6 +111,22 @@ std::string Utf8(const wchar_t* text) {
     return result;
 }
 
+// Module ranges seen at start. Walk() only looks up unwind data inside them: for other code
+// (JIT) RtlLookupFunctionEntry consults the dynamic function tables under a lock that a
+// suspended guest core can hold while it dispatches a fastmem fault, which froze the emulator.
+constexpr size_t MaxModules = 512;
+std::array<std::pair<std::uint64_t, std::uint64_t>, MaxModules> module_ranges;
+size_t num_modules = 0;
+
+bool InModule(std::uint64_t address) {
+    for (size_t index = 0; index < num_modules; ++index) {
+        if (address >= module_ranges[index].first && address < module_ranges[index].second) {
+            return true;
+        }
+    }
+    return false;
+}
+
 void WriteModules(std::ofstream& file) {
     const HANDLE snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPMODULE, 0);
     if (snapshot == INVALID_HANDLE_VALUE) {
@@ -118,6 +134,10 @@ void WriteModules(std::ofstream& file) {
     }
     MODULEENTRY32W entry{.dwSize = sizeof(MODULEENTRY32W)};
     for (BOOL more = Module32FirstW(snapshot, &entry); more; more = Module32NextW(snapshot, &entry)) {
+        if (num_modules < MaxModules) {
+            const auto base = static_cast<std::uint64_t>(reinterpret_cast<std::uintptr_t>(entry.modBaseAddr));
+            module_ranges[num_modules++] = {base, base + entry.modBaseSize};
+        }
         Put(file, KindModule);
         Put(file, static_cast<std::uint64_t>(reinterpret_cast<std::uintptr_t>(entry.modBaseAddr)));
         Put(file, static_cast<std::uint32_t>(entry.modBaseSize));
@@ -131,6 +151,9 @@ size_t Walk(CONTEXT& context, std::array<std::uint64_t, MaxDepth>& frames) {
     size_t depth = 0;
     while (depth < MaxDepth && context.Rip != 0) {
         frames[depth++] = context.Rip;
+        if (!InModule(context.Rip)) {
+            break;
+        }
         DWORD64 image_base{};
         const PRUNTIME_FUNCTION function = RtlLookupFunctionEntry(context.Rip, &image_base, nullptr);
         if (function == nullptr) {
