@@ -29,6 +29,8 @@ jobs:
         shell: pwsh
         run: |
           choco install ninja -y --no-progress
+          choco upgrade llvm -y --no-progress
+          "C:\Program Files\LLVM\bin" | Out-File -Append -Encoding utf8 $env:GITHUB_PATH
           $sdk = "$env:RUNNER_TEMP\vulkan-sdk.exe"
           Invoke-WebRequest https://sdk.lunarg.com/sdk/download/latest/windows/vulkan-sdk.exe -OutFile $sdk
           Start-Process -Wait -FilePath $sdk -ArgumentList "--root C:\VulkanSDK --accept-licenses --default-answer --confirm-command install"
@@ -46,18 +48,30 @@ jobs:
           key: cpm-${{ runner.os }}-${{ hashFiles('cpmfile.json', '**/cpmfile.json') }}
           restore-keys: cpm-${{ runner.os }}-
 
-      - name: Configure
+      - name: Configure (clang-cl, ThinLTO, PGO, Skylake-class AVX2)
         shell: pwsh
-        run: >
-          cmake -S . -B build -G Ninja
-          -DCMAKE_BUILD_TYPE=Release
-          -DCMAKE_C_COMPILER=cl -DCMAKE_CXX_COMPILER=cl
-          -DCMAKE_C_COMPILER_LAUNCHER=sccache -DCMAKE_CXX_COMPILER_LAUNCHER=sccache
-          "-DCMAKE_C_FLAGS=/arch:AVX2"
-          "-DCMAKE_CXX_FLAGS=/arch:AVX2 /EHsc"
-          -DYUZU_TESTS=OFF -DBUILD_TESTING=OFF
-          -DYUZU_CMD=OFF -DYUZU_ROOM=OFF -DYUZU_ROOM_STANDALONE=OFF
-          -DENABLE_UPDATE_CHECKER=OFF -DUSE_DISCORD_PRESENCE=OFF
+        run: |
+          clang-cl --version
+          $prof = "${{ github.workspace }}/tuned/eglantine.profdata" -replace '\\','/'
+          $pgo = ""
+          llvm-profdata show "$prof" > $null 2>&1
+          if ($LASTEXITCODE -eq 0) {
+            $pgo = "/clang:-fprofile-use=$prof /clang:-Wno-profile-instr-unprofiled /clang:-Wno-profile-instr-out-of-date /clang:-Wno-backend-plugin"
+            Write-Host "PGO profile in use"
+          } else { Write-Host "PGO profile unreadable by this LLVM: building without PGO" }
+          $flags = "/clang:-march=x86-64-v3 /clang:-mtune=skylake -flto=thin $pgo"
+          cmake -S . -B build -G Ninja `
+            -DCMAKE_BUILD_TYPE=Release `
+            -DCMAKE_C_COMPILER=clang-cl -DCMAKE_CXX_COMPILER=clang-cl `
+            -DCMAKE_LINKER=lld-link -DCMAKE_AR=llvm-lib `
+            -DCMAKE_C_COMPILER_LAUNCHER=sccache -DCMAKE_CXX_COMPILER_LAUNCHER=sccache `
+            "-DCMAKE_C_FLAGS=/DWIN32 /D_WINDOWS $flags" `
+            "-DCMAKE_CXX_FLAGS=/DWIN32 /D_WINDOWS /EHsc $flags" `
+            "-DCMAKE_EXE_LINKER_FLAGS=/machine:x64 /opt:lldltojobs=4" `
+            -DENABLE_LTO=ON `
+            -DYUZU_TESTS=OFF -DBUILD_TESTING=OFF `
+            -DYUZU_CMD=OFF -DYUZU_ROOM=OFF -DYUZU_ROOM_STANDALONE=OFF `
+            -DENABLE_UPDATE_CHECKER=OFF -DUSE_DISCORD_PRESENCE=OFF
 
       - name: Build
         shell: pwsh
