@@ -7,6 +7,12 @@
 #
 # Restart the emulator after editing.
 
+# --- Speed shortcuts for the split GPU thread (on in Selevet's performance releases) ---
+EDEN_NX2_DMA_RANGES=1
+EDEN_NX2_LIST_TRUST=1
+EDEN_NX2_ACQUIRE_PEEK=1
+EDEN_NX2_UNSAFE_PREEMPTIVE_READS=1
+
 #EDEN_NX2_3D_HISTORY=
 #EDEN_NX2_3D_METHODS=
 #EDEN_NX2_A2C_REFRESH=
