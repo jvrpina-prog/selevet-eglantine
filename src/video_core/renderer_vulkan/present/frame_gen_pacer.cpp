@@ -15,7 +15,10 @@ namespace {
 using Clock = std::chrono::steady_clock;
 
 constexpr f32 INTERVAL_SMOOTHING = 0.25f;
-constexpr f32 MINIMUM_BASE_RATE = 10.0f;
+// Below this the pacer stops generating. 7 rather than 10: on an i5-8500 with an Arc A380
+// Ocarina of Time runs at 9-14 frames a second, and its heavier frames (over 100 ms) turned
+// generation off just where a 30 FPS target needed it most.
+constexpr f32 MINIMUM_BASE_RATE = 7.0f;
 constexpr f32 BURST_CADENCE_RATIO = 3.0f;
 constexpr f32 BURST_TARGET_RATIO = 2.0f;
 constexpr f32 PROBE_THROUGHPUT_TOLERANCE = 0.95f;
